@@ -10,13 +10,16 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.Cancellable;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
 import org.bukkit.event.player.PlayerAttemptPickupItemEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Map;
@@ -25,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class AntiDupe extends JavaPlugin implements Listener {
 
-    private final Map<UUID, TransactionData> transactions =
+    private final Map<UUID, TransactionData> transactionData =
             new ConcurrentHashMap<>();
 
     private long notificationCooldown;
@@ -41,27 +44,30 @@ public final class AntiDupe extends JavaPlugin implements Listener {
 
         Bukkit.getPluginManager().registerEvents(this, this);
 
-        getLogger().info("AntiDupe enabled.");
+        getLogger().info("----------------------------------------");
+        getLogger().info("AntiDupe v1.1 enabled");
         getLogger().info("Paper 26.2 / Java 25");
+        getLogger().info("Event-driven protection enabled");
+        getLogger().info("----------------------------------------");
     }
 
     @Override
     public void onDisable() {
-        transactions.clear();
+        transactionData.clear();
         getLogger().info("AntiDupe disabled.");
     }
+
+    // =========================================================
+    // INVENTORY CLICK
+    // =========================================================
 
     @EventHandler(
             priority = EventPriority.HIGHEST,
             ignoreCancelled = true
     )
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!pluginEnabled()) {
-            return;
-        }
 
-        if (!getConfig().getBoolean(
-                "protection.inventory-click", true)) {
+        if (!enabled("protection.inventory.enabled")) {
             return;
         }
 
@@ -72,29 +78,50 @@ public final class AntiDupe extends JavaPlugin implements Listener {
         ItemStack current = event.getCurrentItem();
         ItemStack cursor = event.getCursor();
 
-        if (hasImpossibleAmount(current)
-                || hasImpossibleAmount(cursor)) {
+        if (enabled("protection.inventory.click")
+                && isInvalidStack(current)) {
 
-            block(player, event, "Impossible item stack");
+            detect(
+                    player,
+                    event,
+                    "Invalid item stack in inventory click"
+            );
+
             return;
         }
 
-        if (isTransactionSpamming(player)) {
-            block(player, event, "Inventory transaction spam");
+        if (isInvalidStack(cursor)) {
+
+            detect(
+                    player,
+                    event,
+                    "Invalid cursor stack"
+            );
+
+            return;
+        }
+
+        if (enabled("transaction.enabled")
+                && isTransactionAnomaly(player)) {
+
+            monitorTransaction(
+                    player,
+                    "Excessive inventory transactions"
+            );
         }
     }
+
+    // =========================================================
+    // INVENTORY DRAG
+    // =========================================================
 
     @EventHandler(
             priority = EventPriority.HIGHEST,
             ignoreCancelled = true
     )
     public void onInventoryDrag(InventoryDragEvent event) {
-        if (!pluginEnabled()) {
-            return;
-        }
 
-        if (!getConfig().getBoolean(
-                "protection.inventory-drag", true)) {
+        if (!enabled("protection.inventory.drag")) {
             return;
         }
 
@@ -104,249 +131,340 @@ public final class AntiDupe extends JavaPlugin implements Listener {
 
         ItemStack oldCursor = event.getOldCursor();
 
-        if (hasImpossibleAmount(oldCursor)
-                || isTransactionSpamming(player)) {
+        if (isInvalidStack(oldCursor)) {
 
-            block(player, event, "Suspicious inventory drag");
+            detect(
+                    player,
+                    event,
+                    "Invalid stack during inventory drag"
+            );
         }
     }
+
+    // =========================================================
+    // HOPPER / INVENTORY MOVE
+    // =========================================================
 
     @EventHandler(
             priority = EventPriority.HIGHEST,
             ignoreCancelled = true
     )
-    public void onHopperMove(InventoryMoveItemEvent event) {
-        if (!pluginEnabled()) {
+    public void onInventoryMove(InventoryMoveItemEvent event) {
+
+        if (!enabled("hopper.enabled")) {
             return;
         }
 
-        if (!getConfig().getBoolean(
-                "protection.hopper", true)) {
+        if (!enabled("hopper.monitor-transfers")) {
             return;
         }
 
         ItemStack item = event.getItem();
 
-        if (hasImpossibleAmount(item)) {
+        if (isInvalidStack(item)) {
+
             event.setCancelled(true);
 
-            getLogger().warning(
-                    "Blocked impossible item stack moved by inventory."
+            logSystemDetection(
+                    "Invalid stack detected during inventory transfer"
             );
         }
+
+        if (enabled("item-consistency.container-transfer")) {
+
+            if (containsInvalidStack(event.getSource())
+                    || containsInvalidStack(event.getDestination())) {
+
+                event.setCancelled(true);
+
+                logSystemDetection(
+                        "Invalid stack detected in container transfer"
+                );
+            }
+        }
     }
+
+    // =========================================================
+    // HOPPER PICKUP
+    // =========================================================
 
     @EventHandler(
             priority = EventPriority.HIGHEST,
             ignoreCancelled = true
     )
-    public void onHopperPickup(InventoryPickupItemEvent event) {
-        if (!pluginEnabled()) {
-            return;
-        }
+    public void onInventoryPickup(
+            InventoryPickupItemEvent event
+    ) {
 
-        if (!getConfig().getBoolean(
-                "protection.hopper", true)) {
+        if (!enabled("hopper.enabled")) {
             return;
         }
 
         ItemStack item = event.getItem().getItemStack();
 
-        if (hasImpossibleAmount(item)) {
+        if (isInvalidStack(item)) {
+
             event.setCancelled(true);
 
-            getLogger().warning(
-                    "Blocked impossible item stack picked up by inventory."
+            logSystemDetection(
+                    "Invalid stack detected during hopper pickup"
             );
         }
     }
+
+    // =========================================================
+    // PLAYER PICKUP
+    // =========================================================
 
     @EventHandler(
             priority = EventPriority.HIGHEST,
             ignoreCancelled = true
     )
-    public void onPlayerPickup(PlayerAttemptPickupItemEvent event) {
-        if (!pluginEnabled()) {
+    public void onPlayerPickup(
+            PlayerAttemptPickupItemEvent event
+    ) {
+
+        if (!enabled("protection.items.pickup")) {
             return;
         }
 
-        if (!getConfig().getBoolean(
-                "protection.item-pickup", true)) {
-            return;
-        }
+        Player player = event.getPlayer();
 
-        ItemStack item = event.getItem().getItemStack();
+        ItemStack item =
+                event.getItem().getItemStack();
 
-        if (hasImpossibleAmount(item)) {
+        if (isInvalidStack(item)) {
+
             event.setCancelled(true);
 
-            handleDetection(
-                    event.getPlayer(),
-                    "Impossible pickup stack"
+            detect(
+                    player,
+                    null,
+                    "Invalid dropped item stack"
             );
         }
     }
+
+    // =========================================================
+    // PLAYER DROP
+    // =========================================================
 
     @EventHandler(
             priority = EventPriority.HIGHEST,
             ignoreCancelled = true
     )
     public void onPlayerDrop(PlayerDropItemEvent event) {
-        if (!pluginEnabled()) {
+
+        if (!enabled("protection.items.drop")) {
             return;
         }
 
-        if (!getConfig().getBoolean(
-                "protection.item-drop", true)) {
-            return;
-        }
+        ItemStack item =
+                event.getItemDrop().getItemStack();
 
-        ItemStack item = event.getItemDrop().getItemStack();
+        if (isInvalidStack(item)) {
 
-        if (hasImpossibleAmount(item)) {
             event.setCancelled(true);
 
-            handleDetection(
+            detect(
                     event.getPlayer(),
-                    "Impossible dropped stack"
+                    event,
+                    "Invalid dropped item stack"
             );
+        }
+
+        if (enabled("item-consistency.drop-pickup")) {
+
+            if (containsInvalidContainer(item)) {
+
+                event.setCancelled(true);
+
+                detect(
+                        event.getPlayer(),
+                        event,
+                        "Invalid container item"
+                );
+            }
         }
     }
 
-    private boolean hasImpossibleAmount(ItemStack item) {
-        if (item == null || item.getType() == Material.AIR) {
+    // =========================================================
+    // ITEM VALIDATION
+    // =========================================================
+
+    private boolean isInvalidStack(ItemStack item) {
+
+        if (item == null) {
             return false;
         }
 
-        if (!getConfig().getBoolean(
-                "detection.impossible-stack-size", true)) {
+        if (item.getType() == Material.AIR) {
+            return false;
+        }
+
+        if (!enabled("item-consistency.enabled")) {
+            return false;
+        }
+
+        if (!enabled(
+                "item-consistency.invalid-stack-size"
+        )) {
             return false;
         }
 
         int amount = item.getAmount();
-        int maximum = item.getMaxStackSize();
 
-        return amount <= 0 || amount > maximum;
+        int max =
+                item.getMaxStackSize();
+
+        return amount <= 0 || amount > max;
     }
 
-    private boolean isTransactionSpamming(Player player) {
-        if (!getConfig().getBoolean(
-                "detection.transaction-spam", true)) {
+    // =========================================================
+    // CONTAINER VALIDATION
+    // =========================================================
+
+    private boolean containsInvalidContainer(
+            ItemStack item
+    ) {
+
+        if (item == null) {
             return false;
         }
 
-        long now = System.currentTimeMillis();
+        if (!(item.getItemMeta() instanceof BlockStateMeta meta)) {
+            return false;
+        }
 
-        TransactionData data = transactions.computeIfAbsent(
-                player.getUniqueId(),
-                uuid -> new TransactionData(now)
-        );
+        if (meta.getBlockState() instanceof org.bukkit.block.Container container) {
 
-        long window = getConfig().getLong(
-                "detection.transaction-window-ms",
-                1000L
-        );
+            Inventory inventory =
+                    container.getInventory();
+
+            return containsInvalidStack(inventory);
+        }
+
+        return false;
+    }
+
+    private boolean containsInvalidStack(
+            Inventory inventory
+    ) {
+
+        if (inventory == null) {
+            return false;
+        }
+
+        for (ItemStack item : inventory.getContents()) {
+
+            if (isInvalidStack(item)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // =========================================================
+    // TRANSACTION ANALYSIS
+    // =========================================================
+
+    private boolean isTransactionAnomaly(Player player) {
+
+        long now =
+                System.currentTimeMillis();
+
+        TransactionData data =
+                transactionData.computeIfAbsent(
+                        player.getUniqueId(),
+                        id -> new TransactionData(now)
+                );
+
+        long window =
+                getConfig().getLong(
+                        "transaction.window-ms",
+                        1000L
+                );
 
         if (now - data.windowStart > window) {
+
+            if (data.transactions >
+                    getConfig().getInt(
+                            "transaction.max-per-window",
+                            80
+                    )) {
+
+                data.suspiciousWindows++;
+            } else {
+
+                data.suspiciousWindows = 0;
+            }
+
             data.windowStart = now;
             data.transactions = 0;
         }
 
         data.transactions++;
 
-        return data.transactions >
+        return data.suspiciousWindows >=
                 getConfig().getInt(
-                        "detection.max-transactions",
-                        80
+                        "transaction.suspicious-windows",
+                        3
                 );
     }
 
-    private void block(
+    private void monitorTransaction(
             Player player,
-            org.bukkit.event.Cancellable event,
             String reason
     ) {
-        if (getConfig().getBoolean(
-                "settings.cancel-suspicious-actions",
+
+        /*
+         * Transaction monitoring is intentionally monitor-only.
+         *
+         * Fast clicking alone must NOT result in item deletion,
+         * kicking or inventory cancellation.
+         */
+        logDetection(
+                player,
+                reason
+        );
+    }
+
+    // =========================================================
+    // DETECTION
+    // =========================================================
+
+    private void detect(
+            Player player,
+            Cancellable event,
+            String reason
+    ) {
+
+        if (player == null) {
+            return;
+        }
+
+        if (event != null
+                && getConfig().getBoolean(
+                "actions.cancel",
                 true)) {
 
             event.setCancelled(true);
         }
 
-        handleDetection(player, reason);
-    }
-
-    private void handleDetection(
-            Player player,
-            String reason
-    ) {
-        if (player == null) {
-            return;
-        }
-
-        long now = System.currentTimeMillis();
-
-        TransactionData data = transactions.computeIfAbsent(
-                player.getUniqueId(),
-                uuid -> new TransactionData(now)
+        logDetection(
+                player,
+                reason
         );
 
-        if (now - data.lastNotification <
-                notificationCooldown) {
-            return;
-        }
+        notifyStaff(
+                player,
+                reason
+        );
 
-        data.lastNotification = now;
-
-        String name = player.getName();
-
-        if (getConfig().getBoolean(
-                "settings.console-log",
-                true)) {
-
-            getLogger().warning(
-                    "Possible duplication activity detected: "
-                            + name
-                            + " | "
-                            + reason
-            );
-        }
-
-        if (getConfig().getBoolean(
-                "settings.staff-notification",
-                true)) {
-
-            String message = color(
-                    getConfig().getString(
-                            "messages.staff-alert",
-                            "&c%player% &7triggered AntiDupe protection."
-                    )
-            ).replace("%player%", name);
-
-            for (Player staff : Bukkit.getOnlinePlayers()) {
-                if (staff.hasPermission("antidupe.admin")) {
-                    staff.sendMessage(message);
-                }
-            }
-        }
-
-        if (getConfig().getBoolean(
-                "actions.message-player",
-                true)) {
-
-            player.sendMessage(
-                    Component.text(
-                            ChatColor.stripColor(
-                                    color(
-                                            getConfig().getString(
-                                                    "messages.player-detected",
-                                                    "&cSuspicious inventory activity detected."
-                                            )
-                                    )
-                            )
-                    )
-            );
-        }
+        notifyPlayer(
+                player
+        );
 
         if (getConfig().getBoolean(
                 "actions.close-inventory",
@@ -360,36 +478,267 @@ public final class AntiDupe extends JavaPlugin implements Listener {
 
         if (getConfig().getBoolean(
                 "actions.kick",
-                false)) {
+                false
+        )) {
 
-            String kickMessage = color(
-                    getConfig().getString(
-                            "messages.player-detected",
-                            "&cSuspicious inventory activity detected."
-                    )
-            );
+            String message =
+                    stripColor(
+                            color(
+                                    getConfig().getString(
+                                            "messages.player-detected",
+                                            "&cSuspicious item duplication activity detected."
+                                    )
+                            )
+                    );
 
             Bukkit.getScheduler().runTask(
                     this,
                     (Runnable) () ->
                             player.kick(
-                                    Component.text(
-                                            ChatColor.stripColor(
-                                                    kickMessage
-                                            )
-                                    )
+                                    Component.text(message)
                             )
             );
         }
 
+        executeCommands(player);
+    }
+
+    // =========================================================
+    // LOGGING
+    // =========================================================
+
+    private void logDetection(
+            Player player,
+            String reason
+    ) {
+
+        if (!getConfig().getBoolean(
+                "logging.enabled",
+                true
+        )) {
+            return;
+        }
+
+        TransactionData data =
+                transactionData.computeIfAbsent(
+                        player.getUniqueId(),
+                        id -> new TransactionData(
+                                System.currentTimeMillis()
+                        )
+                );
+
+        long now =
+                System.currentTimeMillis();
+
+        if (now - data.lastNotification <
+                notificationCooldown) {
+
+            return;
+        }
+
+        data.lastNotification = now;
+
+        if (!getConfig().getBoolean(
+                "logging.console",
+                true
+        )) {
+            return;
+        }
+
+        String location =
+                player.getWorld().getName()
+                        + " "
+                        + player.getLocation().getBlockX()
+                        + " "
+                        + player.getLocation().getBlockY()
+                        + " "
+                        + player.getLocation().getBlockZ();
+
+        getLogger().warning(
+                "Detection: "
+                        + player.getName()
+                        + " | Reason: "
+                        + reason
+                        + " | Location: "
+                        + location
+        );
+    }
+
+    private void logSystemDetection(
+            String reason
+    ) {
+
+        if (!getConfig().getBoolean(
+                "logging.console",
+                true
+        )) {
+            return;
+        }
+
+        getLogger().warning(
+                "System detection: "
+                        + reason
+        );
+    }
+
+    // =========================================================
+    // STAFF ALERT
+    // =========================================================
+
+    private void notifyStaff(
+            Player player,
+            String reason
+    ) {
+
+        if (!getConfig().getBoolean(
+                "staff-alert.enabled",
+                true
+        )) {
+            return;
+        }
+
+        String permission =
+                getConfig().getString(
+                        "staff-alert.permission",
+                        "antidupe.admin"
+                );
+
+        StringBuilder message =
+                new StringBuilder();
+
+        message.append(
+                getConfig().getString(
+                        "messages.staff-alert",
+                        "&c[AntiDupe] &f%player% &7triggered protection."
+                ).replace(
+                        "%player%",
+                        player.getName()
+                )
+        );
+
+        if (getConfig().getBoolean(
+                "staff-alert.show-reason",
+                true
+        )) {
+
+            message.append(
+                    color(
+                            " &8| &7Reason: &f"
+                    )
+            );
+
+            message.append(reason);
+        }
+
+        if (getConfig().getBoolean(
+                "staff-alert.show-world",
+                true
+        )) {
+
+            message.append(
+                    color(
+                            " &8| &7World: &f"
+                    )
+            );
+
+            message.append(
+                    player.getWorld().getName()
+            );
+        }
+
+        if (getConfig().getBoolean(
+                "staff-alert.show-location",
+                true
+        )) {
+
+            message.append(
+                    color(
+                            " &8| &7Location: &f"
+                    )
+            );
+
+            message.append(
+                    player.getLocation().getBlockX()
+            );
+
+            message.append(" ");
+
+            message.append(
+                    player.getLocation().getBlockY()
+            );
+
+            message.append(" ");
+
+            message.append(
+                    player.getLocation().getBlockZ()
+            );
+        }
+
+        String finalMessage =
+                color(message.toString());
+
+        for (Player staff :
+                Bukkit.getOnlinePlayers()) {
+
+            if (staff.hasPermission(permission)) {
+
+                staff.sendMessage(
+                        Component.text(
+                                stripColor(finalMessage)
+                        )
+                );
+            }
+        }
+    }
+
+    // =========================================================
+    // PLAYER MESSAGE
+    // =========================================================
+
+    private void notifyPlayer(
+            Player player
+    ) {
+
+        if (!getConfig().getBoolean(
+                "actions.message-player",
+                true
+        )) {
+            return;
+        }
+
+        String message =
+                getConfig().getString(
+                        "messages.player-detected",
+                        "&cSuspicious item duplication activity detected."
+                );
+
+        player.sendMessage(
+                Component.text(
+                        stripColor(
+                                color(message)
+                        )
+                )
+        );
+    }
+
+    // =========================================================
+    // COMMANDS
+    // =========================================================
+
+    private void executeCommands(
+            Player player
+    ) {
+
         for (String command :
                 getConfig().getStringList(
-                        "actions.commands")) {
+                        "actions.commands"
+                )) {
 
-            String parsed = command.replace(
-                    "%player%",
-                    name
-            );
+            String parsed =
+                    command.replace(
+                            "%player%",
+                            player.getName()
+                    );
 
             Bukkit.getScheduler().runTask(
                     this,
@@ -409,10 +758,14 @@ public final class AntiDupe extends JavaPlugin implements Listener {
             String label,
             String[] args
     ) {
-        if (!sender.hasPermission("antidupe.admin")) {
+
+        if (!sender.hasPermission(
+                "antidupe.admin"
+        )) {
+
             sender.sendMessage(
                     Component.text(
-                            ChatColor.stripColor(
+                            stripColor(
                                     color(
                                             getConfig().getString(
                                                     "messages.no-permission",
@@ -427,23 +780,16 @@ public final class AntiDupe extends JavaPlugin implements Listener {
         }
 
         if (args.length == 0) {
+
             sender.sendMessage(
                     Component.text(
-                            ChatColor.stripColor(
-                                    color(
-                                            "&b/antidupe reload &7- Reload configuration"
-                                    )
-                            )
+                            "/antidupe reload"
                     )
             );
 
             sender.sendMessage(
                     Component.text(
-                            ChatColor.stripColor(
-                                    color(
-                                            "&b/antidupe status &7- Show status"
-                                    )
-                            )
+                            "/antidupe status"
                     )
             );
 
@@ -453,6 +799,7 @@ public final class AntiDupe extends JavaPlugin implements Listener {
         switch (args[0].toLowerCase()) {
 
             case "reload" -> {
+
                 reloadConfig();
 
                 notificationCooldown =
@@ -463,43 +810,28 @@ public final class AntiDupe extends JavaPlugin implements Listener {
 
                 sender.sendMessage(
                         Component.text(
-                                ChatColor.stripColor(
-                                        color(
-                                                getConfig().getString(
-                                                        "messages.reloaded",
-                                                        "&aAntiDupe configuration reloaded."
-                                                )
-                                        )
-                                )
+                                "AntiDupe configuration reloaded."
                         )
                 );
             }
 
             case "status" -> {
+
                 boolean enabled =
-                        getConfig().getBoolean(
-                                "settings.enabled",
-                                true
-                        );
+                        pluginEnabled();
 
                 sender.sendMessage(
                         Component.text(
-                                ChatColor.stripColor(
-                                        enabled
-                                                ? "&aAntiDupe is enabled."
-                                                : "&cAntiDupe is disabled."
-                                )
+                                enabled
+                                        ? "AntiDupe is enabled."
+                                        : "AntiDupe is disabled."
                         )
                 );
             }
 
             default -> sender.sendMessage(
                     Component.text(
-                            ChatColor.stripColor(
-                                    color(
-                                            "&cUsage: /antidupe <reload|status>"
-                                    )
-                            )
+                            "Usage: /antidupe <reload|status>"
                     )
             );
         }
@@ -507,19 +839,40 @@ public final class AntiDupe extends JavaPlugin implements Listener {
         return true;
     }
 
-    /*
-     * IMPORTANT:
-     * Do not name this method isEnabled().
-     * JavaPlugin already implements Plugin.isEnabled().
-     */
+    // =========================================================
+    // CONFIG
+    // =========================================================
+
+    private boolean enabled(
+            String path
+    ) {
+
+        if (!pluginEnabled()) {
+            return false;
+        }
+
+        return getConfig().getBoolean(
+                path,
+                true
+        );
+    }
+
     private boolean pluginEnabled() {
+
         return getConfig().getBoolean(
                 "settings.enabled",
                 true
         );
     }
 
-    private String color(String text) {
+    // =========================================================
+    // TEXT
+    // =========================================================
+
+    private String color(
+            String text
+    ) {
+
         if (text == null) {
             return "";
         }
@@ -530,16 +883,36 @@ public final class AntiDupe extends JavaPlugin implements Listener {
         );
     }
 
+    private String stripColor(
+            String text
+    ) {
+
+        if (text == null) {
+            return "";
+        }
+
+        return ChatColor.stripColor(text);
+    }
+
+    // =========================================================
+    // TRANSACTION DATA
+    // =========================================================
+
     private static final class TransactionData {
 
         private long windowStart;
         private long lastNotification;
         private int transactions;
+        private int suspiciousWindows;
 
-        private TransactionData(long now) {
+        private TransactionData(
+                long now
+        ) {
+
             this.windowStart = now;
             this.lastNotification = 0L;
             this.transactions = 0;
+            this.suspiciousWindows = 0;
         }
     }
-            }
+        }
