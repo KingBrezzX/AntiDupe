@@ -1,88 +1,313 @@
 # ==========================================================
-# AntiDupe
-# Paper 26.2 - Java 25
+# AntiDupe v1.1
+# Paper 26.2 / Java 25
 # ==========================================================
 
 settings:
+
+  # Master switch
   enabled: true
 
-  # Block detected suspicious actions
+  # Cancel actions confirmed as suspicious
   prevent-duplicates: true
 
-  # Send detections to console
+  # Write detections to console
   console-log: true
 
-  # Notify players with antidupe.admin
+  # Notify staff with antidupe.admin
   staff-notification: true
 
-  # Cancel suspicious inventory actions
+  # Cancel suspicious inventory events
   cancel-suspicious-actions: true
 
-  # Prevent notification spam
+  # Prevent repeated alerts from the same player
   notification-cooldown-ms: 3000
 
 
+# ==========================================================
+# BASIC PROTECTION
+# ==========================================================
+
 protection:
 
-  inventory-click: true
-  inventory-drag: true
+  inventory:
+    enabled: true
 
-  item-pickup: true
-  item-drop: true
+    # Normal inventory clicks
+    click: true
 
-  hopper: true
-  dispenser: true
+    # Inventory drag
+    drag: true
 
-  containers: true
+    # Number-key hotbar swaps
+    hotbar-swap: true
 
-  crafting: true
-  smithing: true
+    # Double-click item collection
+    double-click: true
+
+    # Shift-click
+    shift-click: true
+
+    # Offhand swaps
+    offhand: true
+
+  items:
+    pickup: true
+    drop: true
+    impossible-stack-size: true
+
+  containers:
+    enabled: true
+
+    chest: true
+    double-chest: true
+    barrel: true
+    shulker-box: true
+    hopper: true
+    dispenser: true
+    dropper: true
+
+  crafting:
+    enabled: true
+    normal-crafting: true
+    smithing: true
 
 
-detection:
+# ==========================================================
+# TRANSACTION PROTECTION
+# ==========================================================
 
-  # Detect an ItemStack with an impossible amount
-  impossible-stack-size: true
+transaction:
 
-  # Detect suspicious inventory transaction patterns
+  enabled: true
+
+  # Maximum suspicious inventory transactions
+  max-per-window: 80
+
+  # Detection window
+  window-ms: 1000
+
+  # How many consecutive suspicious windows are required
+  # before an action is considered highly suspicious.
+  suspicious-windows: 3
+
+  # Do not punish players simply for clicking quickly.
+  # This system is intended as an anomaly signal only.
+  monitor-only: true
+
+
+# ==========================================================
+# ITEM CONSISTENCY
+# ==========================================================
+
+item-consistency:
+
+  enabled: true
+
+  # Invalid amount such as 0 or greater than max stack size
+  invalid-stack-size: true
+
+  # Check item movement between player and containers
+  container-transfer: true
+
+  # Check dropped item -> pickup flow
+  drop-pickup: true
+
+  # Check crafting result
+  crafting-result: true
+
+  # Check smithing result
+  smithing-result: true
+
+
+# ==========================================================
+# SHULKER PROTECTION
+# ==========================================================
+
+shulker:
+
+  enabled: true
+
+  # Validate shulker contents when moved
+  validate-transfer: true
+
+  # Detect impossible item amounts inside containers
+  validate-contents: true
+
+  # Do not scan every tick
+  event-driven-only: true
+
+
+# ==========================================================
+# HOPPER PROTECTION
+# ==========================================================
+
+hopper:
+
+  enabled: true
+
+  # Only validate suspicious item stacks/transfers.
+  # Normal hopper farms are NOT disabled.
+  monitor-transfers: true
+
+  # Do not impose a hopper speed limit
+  limit-speed: false
+
+  # Do not disable hopper clocks
+  disable-hopper-clocks: false
+
+
+# ==========================================================
+# REDSTONE / PISTON
+# ==========================================================
+
+redstone:
+
+  enabled: true
+
+  # Monitoring only.
+  # AntiDupe does NOT disable redstone.
+  monitor-only: true
+
+  piston-monitor: true
+
+  # Never automatically disable redstone machines
+  cancel-redstone: false
+
+
+# ==========================================================
+# EXPLOIT DETECTION
+# ==========================================================
+
+exploit-detection:
+
+  enabled: true
+
+  # Inventory state anomalies
   inventory-desync: true
 
-  # Detect excessive inventory transactions
-  transaction-spam: true
+  # Impossible item movement
+  impossible-transfer: true
 
-  # Maximum transactions allowed in the window
-  max-transactions: 80
+  # Duplicate item transaction patterns
+  duplicate-transaction: true
 
-  # Transaction window
-  transaction-window-ms: 1000
+  # Rapid inventory state changes
+  inventory-anomaly: true
 
+  # Container state inconsistencies
+  container-anomaly: true
+
+  # Detect suspicious repeated item creation signals
+  item-creation-anomaly: true
+
+
+# ==========================================================
+# ACTIONS
+# ==========================================================
 
 actions:
 
-  # Cancel the suspicious event
+  # Cancel the event when the detector has enough evidence
   cancel: true
 
-  # Close the player's inventory
+  # Close inventory after a confirmed suspicious transaction
   close-inventory: true
 
-  # Send a warning to the detected player
+  # Send message to suspected player
   message-player: true
 
-  # Kick is disabled by default
+  # Kick is OFF by default.
+  # Recommended to keep this false while testing.
   kick: false
 
-  # Optional console commands
+  # Execute console commands after confirmed detection.
+  #
   # Example:
   # commands:
-  #   - "warn %player% Possible dupe detected"
+  #   - "say %player% triggered AntiDupe"
+  #
   commands: []
 
+
+# ==========================================================
+# STAFF ALERT
+# ==========================================================
+
+staff-alert:
+
+  enabled: true
+
+  # Permission required to receive alerts
+  permission: antidupe.admin
+
+  # Include detection reason
+  show-reason: true
+
+  # Include player name
+  show-player: true
+
+  # Include world
+  show-world: true
+
+  # Include coordinates
+  show-location: true
+
+
+# ==========================================================
+# LOGGING
+# ==========================================================
+
+logging:
+
+  enabled: true
+
+  # Console logging
+  console: true
+
+  # Detailed detection information
+  detailed: true
+
+  # Save detection information to a log file
+  file: true
+
+  # Maximum number of detection records kept in memory
+  max-records: 5000
+
+
+# ==========================================================
+# PERFORMANCE
+# ==========================================================
+
+performance:
+
+  # Never scan all players every tick
+  event-driven: true
+
+  # Never continuously scan inventories
+  inventory-polling: false
+
+  # Never continuously scan chunks
+  chunk-scanning: false
+
+  # Maximum processing time target per event
+  # This is a safety threshold, not a hard server tick limiter.
+  max-processing-time-ms: 2
+
+
+# ==========================================================
+# MESSAGES
+# ==========================================================
 
 messages:
 
   prefix: "&8[&bAntiDupe&8] "
 
-  blocked: "&cSuspicious inventory action blocked."
+  blocked: "&cSuspicious item transaction blocked."
+
+  player-detected: "&cSuspicious item duplication activity detected."
+
+  staff-alert: "&c[AntiDupe] &f%player% &7triggered protection."
 
   reloaded: "&aAntiDupe configuration reloaded."
 
@@ -92,8 +317,24 @@ messages:
 
   no-permission: "&cYou don't have permission."
 
-  player-detected: "&cSuspicious inventory activity detected."
+  console-detection: >-
+    Possible duplication activity detected from %player%.
+    Reason: %reason%
 
-  staff-alert: "&c%player% &7triggered AntiDupe protection."
 
-  console-detection: "Possible duplication activity detected from %player%."
+# ==========================================================
+# DEBUG
+# ==========================================================
+
+debug:
+
+  enabled: false
+
+  # Extra inventory event logging
+  inventory-events: false
+
+  # Extra container logging
+  container-events: false
+
+  # Extra item movement logging
+  item-movement: false
