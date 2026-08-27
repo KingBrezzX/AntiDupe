@@ -1,5 +1,6 @@
 package id.zyrex.antidupe;
 
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -55,7 +56,7 @@ public final class AntiDupe extends JavaPlugin implements Listener {
             ignoreCancelled = true
     )
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!isEnabled()) {
+        if (!pluginEnabled()) {
             return;
         }
 
@@ -88,7 +89,7 @@ public final class AntiDupe extends JavaPlugin implements Listener {
             ignoreCancelled = true
     )
     public void onInventoryDrag(InventoryDragEvent event) {
-        if (!isEnabled()) {
+        if (!pluginEnabled()) {
             return;
         }
 
@@ -115,7 +116,7 @@ public final class AntiDupe extends JavaPlugin implements Listener {
             ignoreCancelled = true
     )
     public void onHopperMove(InventoryMoveItemEvent event) {
-        if (!isEnabled()) {
+        if (!pluginEnabled()) {
             return;
         }
 
@@ -140,7 +141,7 @@ public final class AntiDupe extends JavaPlugin implements Listener {
             ignoreCancelled = true
     )
     public void onHopperPickup(InventoryPickupItemEvent event) {
-        if (!isEnabled()) {
+        if (!pluginEnabled()) {
             return;
         }
 
@@ -165,7 +166,7 @@ public final class AntiDupe extends JavaPlugin implements Listener {
             ignoreCancelled = true
     )
     public void onPlayerPickup(PlayerAttemptPickupItemEvent event) {
-        if (!isEnabled()) {
+        if (!pluginEnabled()) {
             return;
         }
 
@@ -191,7 +192,7 @@ public final class AntiDupe extends JavaPlugin implements Listener {
             ignoreCancelled = true
     )
     public void onPlayerDrop(PlayerDropItemEvent event) {
-        if (!isEnabled()) {
+        if (!pluginEnabled()) {
             return;
         }
 
@@ -334,10 +335,14 @@ public final class AntiDupe extends JavaPlugin implements Listener {
                 true)) {
 
             player.sendMessage(
-                    color(
-                            getConfig().getString(
-                                    "messages.player-detected",
-                                    "&cSuspicious inventory activity detected."
+                    Component.text(
+                            ChatColor.stripColor(
+                                    color(
+                                            getConfig().getString(
+                                                    "messages.player-detected",
+                                                    "&cSuspicious inventory activity detected."
+                                            )
+                                    )
                             )
                     )
             );
@@ -349,7 +354,7 @@ public final class AntiDupe extends JavaPlugin implements Listener {
 
             Bukkit.getScheduler().runTask(
                     this,
-                    player::closeInventory
+                    (Runnable) player::closeInventory
             );
         }
 
@@ -357,16 +362,23 @@ public final class AntiDupe extends JavaPlugin implements Listener {
                 "actions.kick",
                 false)) {
 
+            String kickMessage = color(
+                    getConfig().getString(
+                            "messages.player-detected",
+                            "&cSuspicious inventory activity detected."
+                    )
+            );
+
             Bukkit.getScheduler().runTask(
                     this,
-                    () -> player.kick(
-                            color(
-                                    getConfig().getString(
-                                            "messages.player-detected",
-                                            "&cSuspicious inventory activity detected."
+                    (Runnable) () ->
+                            player.kick(
+                                    Component.text(
+                                            ChatColor.stripColor(
+                                                    kickMessage
+                                            )
                                     )
                             )
-                    )
             );
         }
 
@@ -381,10 +393,11 @@ public final class AntiDupe extends JavaPlugin implements Listener {
 
             Bukkit.getScheduler().runTask(
                     this,
-                    () -> Bukkit.dispatchCommand(
-                            Bukkit.getConsoleSender(),
-                            parsed
-                    )
+                    (Runnable) () ->
+                            Bukkit.dispatchCommand(
+                                    Bukkit.getConsoleSender(),
+                                    parsed
+                            )
             );
         }
     }
@@ -398,10 +411,14 @@ public final class AntiDupe extends JavaPlugin implements Listener {
     ) {
         if (!sender.hasPermission("antidupe.admin")) {
             sender.sendMessage(
-                    color(
-                            getConfig().getString(
-                                    "messages.no-permission",
-                                    "&cYou don't have permission."
+                    Component.text(
+                            ChatColor.stripColor(
+                                    color(
+                                            getConfig().getString(
+                                                    "messages.no-permission",
+                                                    "&cYou don't have permission."
+                                            )
+                                    )
                             )
                     )
             );
@@ -411,17 +428,30 @@ public final class AntiDupe extends JavaPlugin implements Listener {
 
         if (args.length == 0) {
             sender.sendMessage(
-                    color("&b/antidupe reload &7- Reload configuration")
+                    Component.text(
+                            ChatColor.stripColor(
+                                    color(
+                                            "&b/antidupe reload &7- Reload configuration"
+                                    )
+                            )
+                    )
             );
 
             sender.sendMessage(
-                    color("&b/antidupe status &7- Show status")
+                    Component.text(
+                            ChatColor.stripColor(
+                                    color(
+                                            "&b/antidupe status &7- Show status"
+                                    )
+                            )
+                    )
             );
 
             return true;
         }
 
         switch (args[0].toLowerCase()) {
+
             case "reload" -> {
                 reloadConfig();
 
@@ -432,10 +462,14 @@ public final class AntiDupe extends JavaPlugin implements Listener {
                         );
 
                 sender.sendMessage(
-                        color(
-                                getConfig().getString(
-                                        "messages.reloaded",
-                                        "&aAntiDupe configuration reloaded."
+                        Component.text(
+                                ChatColor.stripColor(
+                                        color(
+                                                getConfig().getString(
+                                                        "messages.reloaded",
+                                                        "&aAntiDupe configuration reloaded."
+                                                )
+                                        )
                                 )
                         )
                 );
@@ -449,24 +483,36 @@ public final class AntiDupe extends JavaPlugin implements Listener {
                         );
 
                 sender.sendMessage(
-                        color(
-                                enabled
-                                        ? "&aAntiDupe is enabled."
-                                        : "&cAntiDupe is disabled."
+                        Component.text(
+                                ChatColor.stripColor(
+                                        enabled
+                                                ? "&aAntiDupe is enabled."
+                                                : "&cAntiDupe is disabled."
+                                )
                         )
                 );
             }
 
-            default ->
-                    sender.sendMessage(
-                            color("&cUsage: /antidupe <reload|status>")
-                    );
+            default -> sender.sendMessage(
+                    Component.text(
+                            ChatColor.stripColor(
+                                    color(
+                                            "&cUsage: /antidupe <reload|status>"
+                                    )
+                            )
+                    )
+            );
         }
 
         return true;
     }
 
-    private boolean isEnabled() {
+    /*
+     * IMPORTANT:
+     * Do not name this method isEnabled().
+     * JavaPlugin already implements Plugin.isEnabled().
+     */
+    private boolean pluginEnabled() {
         return getConfig().getBoolean(
                 "settings.enabled",
                 true
@@ -496,4 +542,4 @@ public final class AntiDupe extends JavaPlugin implements Listener {
             this.transactions = 0;
         }
     }
-      }
+            }
