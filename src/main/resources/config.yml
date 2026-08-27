@@ -1,0 +1,99 @@
+# ==========================================================
+# AntiDupe
+# Paper 26.2 - Java 25
+# ==========================================================
+
+settings:
+  enabled: true
+
+  # Block detected suspicious actions
+  prevent-duplicates: true
+
+  # Send detections to console
+  console-log: true
+
+  # Notify players with antidupe.admin
+  staff-notification: true
+
+  # Cancel suspicious inventory actions
+  cancel-suspicious-actions: true
+
+  # Prevent notification spam
+  notification-cooldown-ms: 3000
+
+
+protection:
+
+  inventory-click: true
+  inventory-drag: true
+
+  item-pickup: true
+  item-drop: true
+
+  hopper: true
+  dispenser: true
+
+  containers: true
+
+  crafting: true
+  smithing: true
+
+
+detection:
+
+  # Detect an ItemStack with an impossible amount
+  impossible-stack-size: true
+
+  # Detect suspicious inventory transaction patterns
+  inventory-desync: true
+
+  # Detect excessive inventory transactions
+  transaction-spam: true
+
+  # Maximum transactions allowed in the window
+  max-transactions: 80
+
+  # Transaction window
+  transaction-window-ms: 1000
+
+
+actions:
+
+  # Cancel the suspicious event
+  cancel: true
+
+  # Close the player's inventory
+  close-inventory: true
+
+  # Send a warning to the detected player
+  message-player: true
+
+  # Kick is disabled by default
+  kick: false
+
+  # Optional console commands
+  # Example:
+  # commands:
+  #   - "warn %player% Possible dupe detected"
+  commands: []
+
+
+messages:
+
+  prefix: "&8[&bAntiDupe&8] "
+
+  blocked: "&cSuspicious inventory action blocked."
+
+  reloaded: "&aAntiDupe configuration reloaded."
+
+  status-enabled: "&aAntiDupe is enabled."
+
+  status-disabled: "&cAntiDupe is disabled."
+
+  no-permission: "&cYou don't have permission."
+
+  player-detected: "&cSuspicious inventory activity detected."
+
+  staff-alert: "&c%player% &7triggered AntiDupe protection."
+
+  console-detection: "Possible duplication activity detected from %player%."
