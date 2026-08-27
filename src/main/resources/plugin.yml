@@ -1,0 +1,17 @@
+name: AntiDupe
+version: 1.0.0
+main: id.zyrex.antidupe.AntiDupe
+api-version: '26.2'
+author: Zyrex
+description: Lightweight anti-dupe protection for Paper servers.
+
+commands:
+  antidupe:
+    description: AntiDupe administration command
+    usage: /antidupe <reload|status>
+    permission: antidupe.admin
+
+permissions:
+  antidupe.admin:
+    description: Access to AntiDupe administration commands
+    default: op
